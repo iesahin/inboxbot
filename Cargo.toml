@@ -2,6 +2,8 @@
 name = "inboxbot"
 version = "0.1.1"
 edition = "2021"
+description = "A telegram bot to record what you write to a file"
+license = "MIT"
 
 [[bin]]
 name = "inboxbot"
