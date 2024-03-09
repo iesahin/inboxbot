@@ -39,7 +39,7 @@ lazy_static! {
     static ref USERNAME: String = std::env::var("INBOXBOT_USERNAME").unwrap();
 }
 
-const SAME_FILE_THRESHOLD: u64 = 300;
+const SAME_FILE_THRESHOLD: u64 = 180;
 
 #[tokio::main]
 async fn main() {
@@ -104,7 +104,11 @@ fn write_message_to_file(msg: Message, path: Option<String>) -> io::Result<()> {
             format!("{}-tg.md", timestamp)
         }
     };
-    let mut file = OpenOptions::new().append(true).open(filename)?;
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(filename)?;
+
     if let Some(entities) = msg.parse_entities() {
         for entity in entities {
             match entity.kind() {
