@@ -1,5 +1,5 @@
 use std::{
-    fs::{self, File},
+    fs::{self, OpenOptions},
     io::{self, Write},
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -104,7 +104,7 @@ fn write_message_to_file(msg: Message, path: Option<String>) -> io::Result<()> {
             format!("{}-tg.md", timestamp)
         }
     };
-    let mut file = File::create(filename)?;
+    let mut file = OpenOptions::new().append(true).open(filename)?;
     if let Some(entities) = msg.parse_entities() {
         for entity in entities {
             match entity.kind() {
