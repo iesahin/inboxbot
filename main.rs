@@ -40,7 +40,7 @@ lazy_static! {
 }
 
 const SAME_FILE_THRESHOLD: u64 = 1800;
-
+const TIMESTAMP_FORMAT: &str = "%Y%m%d%H%M%S"
 #[tokio::main]
 async fn main() {
     pretty_env_logger::init();
@@ -78,7 +78,7 @@ async fn inbox(bot: Bot, dialogue: MyDialogue, msg: Message) -> HandlerResult {
     for entry in glob("*-tg.md").expect("Failed to read glob pattern") {
         match entry {
             Ok(path) => {
-                if was_file_modified_in_last_n_seconds(&path.to_string_lossy(), SAME_FILE_THRESHOLD)
+                if is_file_created_in_last_n_seconds(&path.to_string_lossy(), SAME_FILE_THRESHOLD)
                 {
                     write_message_to_file(msg.clone(), Some(path.to_string_lossy().to_string()))?;
                     found = true;
@@ -100,7 +100,7 @@ fn write_message_to_file(msg: Message, path: Option<String>) -> io::Result<()> {
     let filename = match path {
         Some(p) => p,
         None => {
-            let timestamp = Local::now().format("%Y%m%d%H%M%S").to_string();
+            let timestamp = Local::now().format(TIMESTAMP_FORMAT).to_string();
             format!("{}-tg.md", timestamp)
         }
     };
@@ -138,13 +138,42 @@ fn was_file_modified_in_last_n_seconds(file_path: &str, n: u64) -> bool {
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_secs();
+
+    current_time - modified_time < n
+}
+
+fn is_file_created_in_last_n_seconds(file_path: &str, 
+n: u64) -> bool {
     let current_time = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_secs();
 
-    current_time - modified_time < n
+
+   if let Ok(creation_time) = parse_datetime_to_timestamp(file_path) {
+       current_time - creation_time < n
+   } else {
+       false
+    }
+}   
+   
+  
+use chrono::{NaiveDateTime, TimeZone, Utc};
+
+fn parse_datetime_to_timestamp(datetime_str: &str) -> Result<i64, Error> {
+    // Extract the datetime portion from the string
+    let datetime_portion = &datetime_str[..14];
+
+    // Parse the datetime string into a NaiveDateTime object
+    let naive_datetime = NaiveDateTime::parse_from_str(datetime_portion, TIMESTAMP_FORMAT)?;
+
+    // Convert NaiveDateTime to a timestamp integer (seconds since Unix epoch)
+    let timestamp = Utc.from_utc_datetime(&naive_datetime).timestamp();
+
+    Ok(timestamp)
 }
+
+
 
 fn random_emoji() -> &'static str {
     let emojis = [
