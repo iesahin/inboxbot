@@ -66,6 +66,15 @@ async fn main() {
     .await;
 }
 
+fn transform_text(text: &str) -> String {
+    // If the text starts with -, replace it with - [ ] to make it a markdown list item
+    if let Some(text) = text.strip_prefix("- ") {
+        format!("- [ ] {}", text)
+    } else {
+        text.to_string()
+    }
+}
+
 async fn inbox(bot: Bot, dialogue: MyDialogue, msg: Message) -> HandlerResult {
     let username = msg.from().unwrap().username.clone();
     if username.unwrap() != USERNAME.to_owned() {
@@ -113,11 +122,11 @@ fn write_message_to_file(msg: Message, path: Option<String>) -> io::Result<()> {
         for entity in entities {
             match entity.kind() {
                 teloxide::types::MessageEntityKind::Url => {
-                    let link = format!("- []({})\n", entity.text());
+                    let link = format!("[]({})\n", entity.text());
                     file.write_all(link.as_bytes())?;
                 }
                 teloxide::types::MessageEntityKind::TextLink { url } => {
-                    let link = format!("- [{}]({})\n", entity.text(), url);
+                    let link = format!("[{}]({})\n", entity.text(), url);
                     file.write_all(link.as_bytes())?;
                 }
                 _ => {}
@@ -125,7 +134,7 @@ fn write_message_to_file(msg: Message, path: Option<String>) -> io::Result<()> {
         }
     }
 
-    msg.text().map(|t| file.write_all(t.as_bytes()));
+    msg.text().map(|t| file.write_all(transform_text(t).as_bytes()));
     file.write_all(b"\n").unwrap();
     Ok(())
 }
