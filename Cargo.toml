@@ -1,8 +1,8 @@
 [package]
 name = "inboxbot"
-version = "0.1.6"
+version = "0.1.7"
 edition = "2021"
-description = "A telegram bot to record what you write to a file"
+description = "A telegram bot to save messages to a file"
 license = "MIT"
 
 [[bin]]
@@ -10,11 +10,12 @@ name = "inboxbot"
 path = "main.rs"
 
 [dependencies]
-teloxide = { version = "0.12", features = ["macros"] }
-log = "0.4"
-pretty_env_logger = "0.5"
-tokio = { version = "1.36", features = ["rt-multi-thread", "macros"] }
-glob = "0.3"
-chrono = "0.4"
-lazy_static = "1.4"
-rand = "0.8"
+teloxide = { version = "^0.13", features = ["macros"] }
+log = "^0.4"
+pretty_env_logger = "^0.5"
+tokio = { version = "^1.39", features = ["rt-multi-thread", "macros"] }
+glob = "^0.3"
+chrono = "^0.4"
+lazy_static = "^1.5"
+rand = "^0.8"
+emoji = "^0.2"

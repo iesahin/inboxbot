@@ -1,10 +1,12 @@
 use std::{
     fs::{self, OpenOptions},
+    hash::{DefaultHasher, Hash, Hasher},
     io::{self, Write},
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use rand::Rng;
+use emoji::Emoji;
+use rand::{seq::IteratorRandom, SeedableRng};
 
 use chrono::Local;
 use glob::glob;
@@ -76,7 +78,7 @@ fn transform_text(text: &str) -> String {
 }
 
 async fn inbox(bot: Bot, dialogue: MyDialogue, msg: Message) -> HandlerResult {
-    let username = msg.from().unwrap().username.clone();
+    let username = msg.from.as_ref().unwrap().username.clone();
     if username.unwrap() != USERNAME.to_owned() {
         bot.send_message(msg.chat.id, "You are not authorized to use this bot")
             .await?;
@@ -100,7 +102,7 @@ async fn inbox(bot: Bot, dialogue: MyDialogue, msg: Message) -> HandlerResult {
     if !found {
         write_message_to_file(msg.clone(), None)?;
     }
-    bot.send_message(msg.chat.id, random_emoji()).await?;
+    bot.send_message(msg.chat.id, random_emoji(None)).await?;
     dialogue.update(State::Inbox).await?;
     Ok(())
 }
@@ -134,7 +136,8 @@ fn write_message_to_file(msg: Message, path: Option<String>) -> io::Result<()> {
         }
     }
 
-    msg.text().map(|t| file.write_all(transform_text(t).as_bytes()));
+    msg.text()
+        .map(|t| file.write_all(transform_text(t).as_bytes()));
     file.write_all(b"\n").unwrap();
     Ok(())
 }
@@ -155,26 +158,21 @@ fn was_file_modified_in_last_n_seconds(file_path: &str, n: u64) -> bool {
     current_time - modified_time < n
 }
 
-fn random_emoji() -> &'static str {
-    let emojis = [
-        "🌍", "🌎", "🌏", "🌐", "🗺️", "🗾", "🧭", "🏔️", "⛰️", "🌋", "🗻", "🏕️", "🏖️", "🏜️", "🏝️", "🏞️",
-        "🏟️", "🏛️", "🏗️", "🧱", "🪨", "🪵", "🛖", "🏘️", "🏚️", "🏠", "🏡", "🏢", "🏣", "🏤", "🏥", "🏦",
-        "🏨", "🏩", "🏪", "🏫", "🏬", "🏭", "🏯", "🏰", "💒", "🗼", "🗽", "⛪", "🕌", "🛕", "🕍",
-        "⛩️", "🕋", "⛲", "⛺", "🌁", "🌃", "🏙️", "🌄", "🌅", "🌆", "🌇", "🌉", "♨️", "🎠", "🎡",
-        "🎢", "💈", "🎪", "🚂", "🚃", "🚄", "🚅", "🚆", "🚇", "🚈", "🚉", "🚊", "🚝", "🚞", "🚋",
-        "🚌", "🚍", "🚎", "🚐", "🚑", "🚒", "🚓", "🚔", "🚕", "🚖", "🚗", "🚘", "🚙", "🛻", "🚚",
-        "🚛", "🚜", "🏎️", "🏍️", "🛵", "🦽", "🦼", "🛺", "🐶", "🐱", "🐭", "🐹", "🐰", "🦊", "🐻",
-        "🐼", "🐨", "🐯", "🦁", "🐮", "🐸", "🐵", "🐔", "🐧", "🐦", "🐤", "🦆", "🦅", "🦉", "🦇",
-        "🐺", "🐗", "🐴", "🦄", "🐝", "🐛", "🦋", "🐌", "🐞", "🐜", "🦟", "🦗", "🕷", "🕸", "🐢",
-        "🐍", "🦎", "🦂", "🦀", "🦞", "🦐", "🦑", "🐙", "🦕", "🦖", "🐳", "🐋", "🐬", "🐟", "🐠",
-        "🐡", "🦈", "🐊", "🐅", "🐆", "🦓", "🦍", "🐘", "🦏", "🦛", "🐪", "🐫", "🦒", "🦘", "🦬",
-        "🐃", "🐂", "🐄", "🐎", "🐏", "🐑", "🐐", "🦌", "🐕", "🐩", "🦮", "🐕", "🐈", "🐓", "🦃",
-        "🦚", "🦜", "🦢", "🦩", "🕊", "🐇", "🌱", "🌲", "🌳", "🌴", "🌵", "🌾", "🌿", "☘️", "🍀",
-        "🍁", "🍂", "🍃", "🪴", "🎋", "🎍", "🌺", "🌻", "🌼", "🌷", "🌹", "🥀", "🌸", "💐", "🍄",
-        "🌰", "🎄", "🌼", "🌻", "🌞", "🌝",
-    ];
+fn hash_string(s: &str) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    s.hash(&mut hasher);
+    hasher.finish()
+}
 
-    let mut rng = rand::thread_rng();
-    let index = rng.gen_range(0..emojis.len());
-    emojis[index]
+fn random_emoji(seed: Option<&str>) -> String {
+    let mut rng = if let Some(seed) = seed {
+        let hashed = hash_string(seed);
+        rand::rngs::StdRng::seed_from_u64(hashed)
+    } else {
+        rand::rngs::StdRng::from_entropy()
+    };
+
+    let all_emoji: Vec<&Emoji> = emoji::lookup_by_name::iter_emoji().collect();
+    let random_emoji = all_emoji.into_iter().choose(&mut rng).unwrap();
+    random_emoji.glyph.to_owned()
 }
