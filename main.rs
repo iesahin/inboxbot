@@ -101,7 +101,7 @@ async fn inbox(bot: Bot, dialogue: MyDialogue, msg: Message) -> HandlerResult {
     filename = Some(write_message_to_file(msg.clone(), filename)?);
     let random_emoji = random_emoji(None);
     bot.send_message(msg.chat.id, random_emoji.clone()).await?;
-    append_to_file(&random_emoji, &filename.unwrap())?;
+    append_to_file(&format!("{random_emoji}\n"), &filename.unwrap())?;
     dialogue.update(State::Inbox).await?;
     Ok(())
 }
