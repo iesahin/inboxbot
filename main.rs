@@ -2,6 +2,7 @@ use std::{
     fs::{self, OpenOptions},
     hash::{DefaultHasher, Hash, Hasher},
     io::{self, Write},
+    path::PathBuf,
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -85,29 +86,32 @@ async fn inbox(bot: Bot, dialogue: MyDialogue, msg: Message) -> HandlerResult {
         return Ok(());
     }
 
-    let mut found = false;
+    let mut filename: Option<String> = None;
     for entry in glob("*-tg.md").expect("Failed to read glob pattern") {
         match entry {
             Ok(path) => {
                 if was_file_modified_in_last_n_seconds(&path.to_string_lossy(), SAME_FILE_THRESHOLD)
                 {
-                    write_message_to_file(msg.clone(), Some(path.to_string_lossy().to_string()))?;
-                    found = true;
+                    filename = Some(path.to_string_lossy().to_string());
                     break;
                 }
             }
             Err(e) => println!("{:?}", e),
         }
     }
-    if !found {
-        write_message_to_file(msg.clone(), None)?;
-    }
-    bot.send_message(msg.chat.id, random_emoji(None)).await?;
+    filename = Some(write_message_to_file(msg.clone(), filename)?);
+    let random_emoji = random_emoji(None);
+    bot.send_message(msg.chat.id, random_emoji.clone()).await?;
+    fs::write(
+        PathBuf::from(&filename.unwrap()),
+        format!("{random_emoji}\n"),
+    )
+    .unwrap();
     dialogue.update(State::Inbox).await?;
     Ok(())
 }
 
-fn write_message_to_file(msg: Message, path: Option<String>) -> io::Result<()> {
+fn write_message_to_file(msg: Message, path: Option<String>) -> io::Result<String> {
     let filename = match path {
         Some(p) => p,
         None => {
@@ -118,7 +122,7 @@ fn write_message_to_file(msg: Message, path: Option<String>) -> io::Result<()> {
     let mut file = OpenOptions::new()
         .create(true)
         .append(true)
-        .open(filename)?;
+        .open(filename.clone())?;
 
     if let Some(entities) = msg.parse_entities() {
         for entity in entities {
@@ -139,7 +143,7 @@ fn write_message_to_file(msg: Message, path: Option<String>) -> io::Result<()> {
     msg.text()
         .map(|t| file.write_all(transform_text(t).as_bytes()));
     file.write_all(b"\n").unwrap();
-    Ok(())
+    Ok(filename)
 }
 
 fn was_file_modified_in_last_n_seconds(file_path: &str, n: u64) -> bool {

@@ -1,6 +1,6 @@
 [package]
 name = "inboxbot"
-version = "0.1.7"
+version = "0.1.8"
 edition = "2021"
 description = "A telegram bot to save messages to a file"
 license = "MIT"
