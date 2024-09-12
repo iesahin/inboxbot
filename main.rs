@@ -2,7 +2,6 @@ use std::{
     fs::{self, OpenOptions},
     hash::{DefaultHasher, Hash, Hasher},
     io::{self, Write},
-    path::PathBuf,
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -102,12 +101,18 @@ async fn inbox(bot: Bot, dialogue: MyDialogue, msg: Message) -> HandlerResult {
     filename = Some(write_message_to_file(msg.clone(), filename)?);
     let random_emoji = random_emoji(None);
     bot.send_message(msg.chat.id, random_emoji.clone()).await?;
-    fs::write(
-        PathBuf::from(&filename.unwrap()),
-        format!("{random_emoji}\n"),
-    )
-    .unwrap();
+    append_to_file(&random_emoji, &filename.unwrap())?;
     dialogue.update(State::Inbox).await?;
+    Ok(())
+}
+
+fn append_to_file(text: &str, filename: &str) -> io::Result<()> {
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(filename)?;
+
+    file.write_all(transform_text(text).as_bytes())?;
     Ok(())
 }
 
@@ -119,30 +124,27 @@ fn write_message_to_file(msg: Message, path: Option<String>) -> io::Result<Strin
             format!("{}-tg.md", timestamp)
         }
     };
-    let mut file = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(filename.clone())?;
 
     if let Some(entities) = msg.parse_entities() {
         for entity in entities {
             match entity.kind() {
                 teloxide::types::MessageEntityKind::Url => {
                     let link = format!("[]({})\n", entity.text());
-                    file.write_all(link.as_bytes())?;
+                    append_to_file(&link, &filename)?;
                 }
                 teloxide::types::MessageEntityKind::TextLink { url } => {
                     let link = format!("[{}]({})\n", entity.text(), url);
-                    file.write_all(link.as_bytes())?;
+                    append_to_file(&link, &filename)?;
                 }
                 _ => {}
             }
         }
     }
 
-    msg.text()
-        .map(|t| file.write_all(transform_text(t).as_bytes()));
-    file.write_all(b"\n").unwrap();
+    if let Some(t) = msg.text() {
+        append_to_file(t, &filename).unwrap()
+    }
+    append_to_file("\n", &filename)?;
     Ok(filename)
 }
 
