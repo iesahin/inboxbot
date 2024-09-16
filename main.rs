@@ -1,12 +1,10 @@
 use std::{
     fs::{self, OpenOptions},
-    hash::{DefaultHasher, Hash, Hasher},
     io::{self, Write},
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use emoji::Emoji;
-use rand::{seq::IteratorRandom, SeedableRng};
+use randem;
 
 use chrono::Local;
 use glob::glob;
@@ -42,6 +40,7 @@ lazy_static! {
 }
 
 const SAME_FILE_THRESHOLD: u64 = 1800;
+const EMOJI_EXCLUDE: Option<&str> = Some("flags");
 
 #[tokio::main]
 async fn main() {
@@ -99,7 +98,7 @@ async fn inbox(bot: Bot, dialogue: MyDialogue, msg: Message) -> HandlerResult {
         }
     }
     filename = Some(write_message_to_file(msg.clone(), filename)?);
-    let random_emoji = random_emoji(None);
+    let random_emoji = randem::randem(None, None, EMOJI_EXCLUDE.map(|s| s.to_string()));
     bot.send_message(msg.chat.id, random_emoji.clone()).await?;
     append_to_file(&format!("{random_emoji}\n"), &filename.unwrap())?;
     dialogue.update(State::Inbox).await?;
@@ -162,23 +161,4 @@ fn was_file_modified_in_last_n_seconds(file_path: &str, n: u64) -> bool {
         .as_secs();
 
     current_time - modified_time < n
-}
-
-fn hash_string(s: &str) -> u64 {
-    let mut hasher = DefaultHasher::new();
-    s.hash(&mut hasher);
-    hasher.finish()
-}
-
-fn random_emoji(seed: Option<&str>) -> String {
-    let mut rng = if let Some(seed) = seed {
-        let hashed = hash_string(seed);
-        rand::rngs::StdRng::seed_from_u64(hashed)
-    } else {
-        rand::rngs::StdRng::from_entropy()
-    };
-
-    let all_emoji: Vec<&Emoji> = emoji::lookup_by_name::iter_emoji().collect();
-    let random_emoji = all_emoji.into_iter().choose(&mut rng).unwrap();
-    random_emoji.glyph.to_owned()
 }

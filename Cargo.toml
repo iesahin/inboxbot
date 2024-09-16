@@ -17,5 +17,4 @@ tokio = { version = "^1.39", features = ["rt-multi-thread", "macros"] }
 glob = "^0.3"
 chrono = "^0.4"
 lazy_static = "^1.5"
-rand = "^0.8"
-emoji = "^0.2"
+randem = "^0.1"
