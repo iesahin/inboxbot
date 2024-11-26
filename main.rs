@@ -29,7 +29,7 @@ pub enum State {
 //     },
 //     ReceiveLocation {
 //         full_name: String,
-//         age: u8,
+//         age: u8a
 //     },
 // }
 //
@@ -69,7 +69,9 @@ async fn main() {
 
 fn transform_text(text: &str) -> String {
     // If the text starts with -, replace it with - [ ] to make it a markdown list item
-    if let Some(text) = text.strip_prefix("- ") {
+    if let Some(text) = text.strip_prefix("-x ") {
+        format!("- [x] {}", text)
+    } else if let Some(text) = text.strip_prefix("- ") {
         format!("- [ ] {}", text)
     } else {
         text.to_string()
@@ -116,33 +118,44 @@ fn append_to_file(text: &str, filename: &str) -> io::Result<()> {
 }
 
 fn write_message_to_file(msg: Message, path: Option<String>) -> io::Result<String> {
-    let filename = match path {
-        Some(p) => p,
-        None => {
-            let timestamp = Local::now().format("%Y%m%d%H%M%S").to_string();
-            format!("{}-tg.md", timestamp)
-        }
-    };
+    let mut link_text = String::new();
+    let mut filename_postfix = String::new();
 
     if let Some(entities) = msg.parse_entities() {
         for entity in entities {
             match entity.kind() {
                 teloxide::types::MessageEntityKind::Url => {
                     let link = format!("[]({})\n", entity.text());
-                    append_to_file(&link, &filename)?;
+                    link_text.push_str(&link);
                 }
                 teloxide::types::MessageEntityKind::TextLink { url } => {
                     let link = format!("[{}]({})\n", entity.text(), url);
-                    append_to_file(&link, &filename)?;
+                    link_text.push_str(&link);
+                }
+                teloxide::types::MessageEntityKind::Hashtag => {
+                    filename_postfix.push_str(entity.text());
                 }
                 _ => {}
             }
         }
     }
 
+    let timestamp = Local::now().format("%Y%m%d%H%M%S").to_string();
+    filename_postfix = filename_postfix.replace("#", "");
+    filename_postfix = filename_postfix.trim().to_owned();
+    let has_hashtag = !filename_postfix.is_empty();
+
+    let filename = match (has_hashtag, path) {
+        (false, Some(p)) => p,
+        (false, None) => format!("{}-tg.md", timestamp),
+        (true, _) => format!("{}-{}.md", timestamp, filename_postfix),
+    };
+
     if let Some(t) = msg.text() {
         append_to_file(t, &filename).unwrap()
     }
+    append_to_file("\n", &filename)?;
+    append_to_file(&link_text, &filename)?;
     append_to_file("\n", &filename)?;
     Ok(filename)
 }
