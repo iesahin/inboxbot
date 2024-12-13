@@ -4,12 +4,14 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use randem;
-
 use chrono::Local;
 use glob::glob;
 use lazy_static::lazy_static;
-use teloxide::{dispatching::dialogue::InMemStorage, prelude::*};
+use teloxide::{
+    dispatching::{dialogue::InMemStorage, HandlerExt, MessageFilterExt},
+    net::Download,
+    prelude::*,
+};
 
 type MyDialogue = Dialogue<State, InMemStorage<State>>;
 type HandlerResult = Result<(), Box<dyn std::error::Error + Send + Sync>>;
@@ -40,6 +42,7 @@ lazy_static! {
 }
 
 const SAME_FILE_THRESHOLD: u64 = 1800;
+// TODO: Add 'man and' to the exclude list
 const EMOJI_EXCLUDE: Option<&str> = Some("flags");
 
 #[tokio::main]
@@ -48,23 +51,20 @@ async fn main() {
     log::info!("Starting dialogue bot...");
 
     let bot = Bot::from_env();
+    let schema = Update::filter_message()
+        .filter_map(|u: Update| u.from().cloned())
+        .enter_dialogue::<Update, InMemStorage<State>, State>()
+        .branch(Message::filter_photo().endpoint(handle_photo_message))
+        .branch(Message::filter_audio().endpoint(handle_audio_message))
+        .branch(Message::filter_voice().endpoint(handle_voice_message))
+        .branch(Message::filter_text().endpoint(handle_text_message));
 
-    Dispatcher::builder(
-        bot,
-        Update::filter_message()
-            .enter_dialogue::<Message, InMemStorage<State>, State>()
-            .branch(dptree::case![State::Inbox].endpoint(inbox)),
-        // .branch(dptree::case![State::ReceiveFullName].endpoint(receive_full_name))
-        // .branch(dptree::case![State::ReceiveAge { full_name }].endpoint(receive_age))
-        // .branch(
-        //     dptree::case![State::ReceiveLocation { full_name, age }].endpoint(receive_location),
-        // )
-    )
-    .dependencies(dptree::deps![InMemStorage::<State>::new()])
-    .enable_ctrlc_handler()
-    .build()
-    .dispatch()
-    .await;
+    Dispatcher::builder(bot, schema)
+        .dependencies(dptree::deps![InMemStorage::<State>::new()])
+        .enable_ctrlc_handler()
+        .build()
+        .dispatch()
+        .await;
 }
 
 fn transform_text(text: &str) -> String {
@@ -78,11 +78,99 @@ fn transform_text(text: &str) -> String {
     }
 }
 
-async fn inbox(bot: Bot, dialogue: MyDialogue, msg: Message) -> HandlerResult {
+async fn check_sender(bot: &Bot, msg: &Message) -> Result<bool, Box<dyn std::error::Error>> {
     let username = msg.from.as_ref().unwrap().username.clone();
     if username.unwrap() != USERNAME.to_owned() {
         bot.send_message(msg.chat.id, "You are not authorized to use this bot")
             .await?;
+        return Ok(false);
+    }
+    Ok(true)
+}
+async fn handle_voice_message(bot: Bot, _dialogue: MyDialogue, msg: Message) -> HandlerResult {
+    if let Ok(false) = check_sender(&bot, &msg).await {
+        return Ok(());
+    }
+
+    if let Some(voice) = msg.voice() {
+        let voice_file_id = &voice.file.id;
+
+        // Get the file information
+        let file = bot.get_file(voice_file_id).await?;
+
+        // Download the file
+        let file_path = file.path;
+        let mut file_content = Vec::new();
+        bot.download_file(&file_path, &mut file_content).await?;
+
+        // Save the file to disk
+        let file_name = file_path.replace("/", "-");
+        fs::write(&file_name, &file_content)?;
+
+        bot.send_message(msg.chat.id, format!("Voice saved as {}", file_name))
+            .await?;
+    }
+
+    Ok(())
+}
+
+async fn handle_audio_message(bot: Bot, _dialogue: MyDialogue, msg: Message) -> HandlerResult {
+    if let Ok(false) = check_sender(&bot, &msg).await {
+        return Ok(());
+    }
+
+    if let Some(audio) = msg.audio() {
+        let audio_file_id = &audio.file.id;
+
+        // Get the file information
+        let file = bot.get_file(audio_file_id).await?;
+
+        // Download the file
+        let file_path = file.path;
+        let mut file_content = Vec::new();
+        bot.download_file(&file_path, &mut file_content).await?;
+
+        // Save the file to disk
+        let file_name = file_path.replace("/", "-");
+        fs::write(&file_name, &file_content)?;
+
+        bot.send_message(msg.chat.id, format!("Audio saved as {}", file_name))
+            .await?;
+    }
+
+    Ok(())
+}
+
+async fn handle_photo_message(bot: Bot, _dialogue: MyDialogue, msg: Message) -> HandlerResult {
+    if let Ok(false) = check_sender(&bot, &msg).await {
+        return Ok(());
+    }
+
+    if let Some(photo) = msg.photo() {
+        let largest_photo = photo.iter().max_by_key(|p| p.width * p.height).unwrap();
+        let file_id = &largest_photo.file.id;
+
+        // Get the file information
+        let file = bot.get_file(file_id).await?;
+
+        // Download the file
+        let file_path = file.path;
+        let mut file_content = Vec::new();
+        bot.download_file(&file_path, &mut file_content).await?;
+
+        // Save the file to disk
+        let file_name = file_path.replace("/", "-");
+        fs::write(&file_name, &file_content)?;
+
+        bot.send_message(msg.chat.id, format!("Photo saved as {}", file_name))
+            .await?;
+    }
+
+    Ok(())
+}
+
+async fn handle_text_message(bot: Bot, dialogue: MyDialogue, msg: Message) -> HandlerResult {
+    if let Ok(false) = check_sender(&bot, &msg).await {
         return Ok(());
     }
 
