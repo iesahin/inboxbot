@@ -54,6 +54,7 @@ async fn main() {
     let schema = Update::filter_message()
         .filter_map(|u: Update| u.from().cloned())
         .enter_dialogue::<Update, InMemStorage<State>, State>()
+        .branch(Message::filter_document().endpoint(handle_document_message))
         .branch(Message::filter_photo().endpoint(handle_photo_message))
         .branch(Message::filter_audio().endpoint(handle_audio_message))
         .branch(Message::filter_voice().endpoint(handle_voice_message))
@@ -78,6 +79,10 @@ fn transform_text(text: &str) -> String {
     }
 }
 
+fn timestamp() -> String {
+    Local::now().format("%Y%m%d%H%M%S").to_string()
+}
+
 async fn check_sender(bot: &Bot, msg: &Message) -> Result<bool, Box<dyn std::error::Error>> {
     let username = msg.from.as_ref().unwrap().username.clone();
     if username.unwrap() != USERNAME.to_owned() {
@@ -87,6 +92,34 @@ async fn check_sender(bot: &Bot, msg: &Message) -> Result<bool, Box<dyn std::err
     }
     Ok(true)
 }
+
+async fn handle_document_message(bot: Bot, _dialogue: MyDialogue, msg: Message) -> HandlerResult {
+    if let Ok(false) = check_sender(&bot, &msg).await {
+        return Ok(());
+    }
+
+    if let Some(document) = msg.document() {
+        let document_file_id = &document.file.id;
+
+        // Get the file information
+        let file = bot.get_file(document_file_id).await?;
+
+        // Download the file
+        let file_path = file.path;
+        let mut file_content = Vec::new();
+        bot.download_file(&file_path, &mut file_content).await?;
+
+        // Save the file to disk
+        let file_name = format!("{}-{}", timestamp(), file_path.replace("/", "-"));
+        fs::write(&file_name, &file_content)?;
+
+        bot.send_message(msg.chat.id, format!("Document saved as {}", file_name))
+            .await?;
+    }
+
+    Ok(())
+}
+
 async fn handle_voice_message(bot: Bot, _dialogue: MyDialogue, msg: Message) -> HandlerResult {
     if let Ok(false) = check_sender(&bot, &msg).await {
         return Ok(());
@@ -104,7 +137,7 @@ async fn handle_voice_message(bot: Bot, _dialogue: MyDialogue, msg: Message) -> 
         bot.download_file(&file_path, &mut file_content).await?;
 
         // Save the file to disk
-        let file_name = file_path.replace("/", "-");
+        let file_name = format!("{}-{}", timestamp(), file_path.replace("/", "-"));
         fs::write(&file_name, &file_content)?;
 
         bot.send_message(msg.chat.id, format!("Voice saved as {}", file_name))
@@ -131,7 +164,7 @@ async fn handle_audio_message(bot: Bot, _dialogue: MyDialogue, msg: Message) -> 
         bot.download_file(&file_path, &mut file_content).await?;
 
         // Save the file to disk
-        let file_name = file_path.replace("/", "-");
+        let file_name = format!("{}-{}", timestamp(), file_path.replace("/", "-"));
         fs::write(&file_name, &file_content)?;
 
         bot.send_message(msg.chat.id, format!("Audio saved as {}", file_name))
@@ -159,7 +192,7 @@ async fn handle_photo_message(bot: Bot, _dialogue: MyDialogue, msg: Message) -> 
         bot.download_file(&file_path, &mut file_content).await?;
 
         // Save the file to disk
-        let file_name = file_path.replace("/", "-");
+        let file_name = format!("{}-{}", timestamp(), file_path.replace("/", "-"));
         fs::write(&file_name, &file_content)?;
 
         bot.send_message(msg.chat.id, format!("Photo saved as {}", file_name))
@@ -228,15 +261,14 @@ fn write_message_to_file(msg: Message, path: Option<String>) -> io::Result<Strin
         }
     }
 
-    let timestamp = Local::now().format("%Y%m%d%H%M%S").to_string();
     filename_postfix = filename_postfix.replace("#", "");
     filename_postfix = filename_postfix.trim().to_owned();
     let has_hashtag = !filename_postfix.is_empty();
 
     let filename = match (has_hashtag, path) {
         (false, Some(p)) => p,
-        (false, None) => format!("{}-tg.md", timestamp),
-        (true, _) => format!("{}-{}.md", timestamp, filename_postfix),
+        (false, None) => format!("{}-tg.md", timestamp()),
+        (true, _) => format!("{}-{}.md", timestamp(), filename_postfix),
     };
 
     if let Some(t) = msg.text() {
