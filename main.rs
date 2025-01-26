@@ -1,11 +1,9 @@
 use std::{
     fs::{self, OpenOptions},
     io::{self, Write},
-    time::{SystemTime, UNIX_EPOCH},
 };
 
 use chrono::Local;
-use glob::glob;
 use lazy_static::lazy_static;
 use teloxide::{
     dispatching::{dialogue::InMemStorage, HandlerExt, MessageFilterExt},
@@ -41,7 +39,8 @@ lazy_static! {
     static ref USERNAME: String = std::env::var("INBOXBOT_USERNAME").unwrap();
 }
 
-const SAME_FILE_THRESHOLD: u64 = 1800;
+// const SAME_FILE_THRESHOLD: u64 = 1800;
+
 // TODO: Add 'man and' to the exclude list
 const EMOJI_EXCLUDE: Option<&str> = Some("flags");
 
@@ -66,17 +65,6 @@ async fn main() {
         .build()
         .dispatch()
         .await;
-}
-
-fn transform_text(text: &str) -> String {
-    // If the text starts with -, replace it with - [ ] to make it a markdown list item
-    if let Some(text) = text.strip_prefix("-x ") {
-        format!("- [x] {}", text)
-    } else if let Some(text) = text.strip_prefix("- ") {
-        format!("- [ ] {}", text)
-    } else {
-        text.to_string()
-    }
 }
 
 fn timestamp() -> String {
@@ -207,23 +195,11 @@ async fn handle_text_message(bot: Bot, dialogue: MyDialogue, msg: Message) -> Ha
         return Ok(());
     }
 
-    let mut filename: Option<String> = None;
-    for entry in glob("*-tg.md").expect("Failed to read glob pattern") {
-        match entry {
-            Ok(path) => {
-                if was_file_modified_in_last_n_seconds(&path.to_string_lossy(), SAME_FILE_THRESHOLD)
-                {
-                    filename = Some(path.to_string_lossy().to_string());
-                    break;
-                }
-            }
-            Err(e) => println!("{:?}", e),
-        }
-    }
-    filename = Some(write_message_to_file(msg.clone(), filename)?);
+    let filename = write_message_to_file(msg.clone())?;
     let random_emoji = randem::randem(None, None, EMOJI_EXCLUDE.map(|s| s.to_string()));
     bot.send_message(msg.chat.id, random_emoji.clone()).await?;
-    append_to_file(&format!("{random_emoji}\n"), &filename.unwrap())?;
+    let time = Local::now().format("%H%M%S").to_string();
+    append_to_file(&format!("@ {time} {random_emoji}\n"), &filename)?;
     dialogue.update(State::Inbox).await?;
     Ok(())
 }
@@ -234,11 +210,11 @@ fn append_to_file(text: &str, filename: &str) -> io::Result<()> {
         .append(true)
         .open(filename)?;
 
-    file.write_all(transform_text(text).as_bytes())?;
+    file.write_all(text.as_bytes())?;
     Ok(())
 }
 
-fn write_message_to_file(msg: Message, path: Option<String>) -> io::Result<String> {
+fn write_message_to_file(msg: Message) -> io::Result<String> {
     let mut link_text = String::new();
     let mut filename_postfix = String::new();
 
@@ -265,10 +241,11 @@ fn write_message_to_file(msg: Message, path: Option<String>) -> io::Result<Strin
     filename_postfix = filename_postfix.trim().to_owned();
     let has_hashtag = !filename_postfix.is_empty();
 
-    let filename = match (has_hashtag, path) {
-        (false, Some(p)) => p,
-        (false, None) => format!("{}-tg.md", timestamp()),
-        (true, _) => format!("{}-{}.md", timestamp(), filename_postfix),
+    let day = Local::now().format("%Y%m%d").to_string();
+    let filename = if has_hashtag {
+        format!("{}-tg.md", day)
+    } else {
+        format!("{}-{}.md", day, filename_postfix)
     };
 
     if let Some(t) = msg.text() {
@@ -280,18 +257,18 @@ fn write_message_to_file(msg: Message, path: Option<String>) -> io::Result<Strin
     Ok(filename)
 }
 
-fn was_file_modified_in_last_n_seconds(file_path: &str, n: u64) -> bool {
-    let metadata = fs::metadata(file_path).unwrap();
-    let modified_time = metadata
-        .modified()
-        .unwrap()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
-    let current_time = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
-
-    current_time - modified_time < n
-}
+// fn is_file_added_in_last_n_seconds(file_path: &str, n: u64) -> bool {
+//     let re = Regex::new(r"^.*(d{14}).*md$").unwrap();
+//
+//     if let Some(captures) = re.captures(file_path) {
+//         let timestamp_str = &captures[1];
+//         if let Ok(parsed_timestamp) = DateTime::parse_from_str(timestamp_str, "%Y%m%d%H%M%S") {
+//             let current_time = chrono::Utc::now().to_utc();
+//             return parsed_timestamp
+//                 > current_time
+//                     .checked_sub_signed(TimeDelta::new(n as i64, 0).unwrap())
+//                     .unwrap();
+//         }
+//     }
+//     false
+// }

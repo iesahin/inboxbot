@@ -1,6 +1,6 @@
 [package]
 name = "inboxbot"
-version = "0.1.13"
+version = "0.1.14"
 edition = "2021"
 description = "A telegram bot to save messages to a file"
 license = "MIT"
@@ -18,3 +18,4 @@ glob = "^0.3"
 chrono = "^0.4"
 lazy_static = "^1.5"
 randem = "^0.1"
+regex = "1"
