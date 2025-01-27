@@ -198,7 +198,7 @@ async fn handle_text_message(bot: Bot, dialogue: MyDialogue, msg: Message) -> Ha
     let filename = write_message_to_file(msg.clone())?;
     let random_emoji = randem::randem(None, None, EMOJI_EXCLUDE.map(|s| s.to_string()));
     bot.send_message(msg.chat.id, random_emoji.clone()).await?;
-    let time = Local::now().format("%H%M%S").to_string();
+    let time = Local::now().format("%H:%M").to_string();
     append_to_file(&format!("@ {time} {random_emoji}\n"), &filename)?;
     dialogue.update(State::Inbox).await?;
     Ok(())
@@ -215,45 +215,48 @@ fn append_to_file(text: &str, filename: &str) -> io::Result<()> {
 }
 
 fn write_message_to_file(msg: Message) -> io::Result<String> {
-    let mut link_text = String::new();
-    let mut filename_postfix = String::new();
+    let mut text = if let Some(text) = msg.text() {
+        text.to_owned()
+    } else {
+        String::new()
+    };
 
     if let Some(entities) = msg.parse_entities() {
         for entity in entities {
             match entity.kind() {
                 teloxide::types::MessageEntityKind::Url => {
                     let link = format!("[]({})\n", entity.text());
-                    link_text.push_str(&link);
+                    text.push_str(&link);
                 }
                 teloxide::types::MessageEntityKind::TextLink { url } => {
                     let link = format!("[{}]({})\n", entity.text(), url);
-                    link_text.push_str(&link);
-                }
-                teloxide::types::MessageEntityKind::Hashtag => {
-                    filename_postfix.push_str(entity.text());
+                    text.push_str(&link);
                 }
                 _ => {}
             }
         }
     }
 
-    filename_postfix = filename_postfix.replace("#", "");
-    filename_postfix = filename_postfix.trim().to_owned();
-    let has_hashtag = !filename_postfix.is_empty();
+    if let Some(forward) = msg.forward_from_user() {
+        let date = if let Some(date) = msg.forward_date() {
+            date.to_rfc2822()
+        } else {
+            "".to_owned()
+        };
+
+        let name = format!(
+            "\nfrom: {} {} (at {})\n",
+            forward.first_name,
+            forward.last_name.as_deref().unwrap_or_default(),
+            date,
+        );
+        text.push_str(&name);
+    }
 
     let day = Local::now().format("%Y%m%d").to_string();
-    let filename = if has_hashtag {
-        format!("{}-tg.md", day)
-    } else {
-        format!("{}-{}.md", day, filename_postfix)
-    };
+    let filename = format!("{}-tg.md", day);
 
-    if let Some(t) = msg.text() {
-        append_to_file(t, &filename).unwrap()
-    }
-    append_to_file("\n", &filename)?;
-    append_to_file(&link_text, &filename)?;
-    append_to_file("\n", &filename)?;
+    append_to_file(&text, &filename)?;
     Ok(filename)
 }
 
