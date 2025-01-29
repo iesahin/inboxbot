@@ -196,6 +196,7 @@ async fn handle_text_message(bot: Bot, dialogue: MyDialogue, msg: Message) -> Ha
     }
 
     let filename = write_message_to_file(msg.clone())?;
+    append_to_file("\n", &filename)?;
     let random_emoji = randem::randem(None, None, EMOJI_EXCLUDE.map(|s| s.to_string()));
     bot.send_message(msg.chat.id, random_emoji.clone()).await?;
     let time = Local::now().format("%H:%M").to_string();
