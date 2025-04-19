@@ -1,6 +1,7 @@
 use std::{
     fs::{self, OpenOptions},
     io::{self, Write},
+    process::Command,
 };
 
 use chrono::Local;
@@ -194,14 +195,48 @@ async fn handle_text_message(bot: Bot, dialogue: MyDialogue, msg: Message) -> Ha
     if let Ok(false) = check_sender(&bot, &msg).await {
         return Ok(());
     }
+    
+    if let Some(text) = msg.text() {
+        // Check if the message is a command (starts with '/')
+        if text.starts_with('/') {
+            let parts: Vec<&str> = text.splitn(2, ' ').collect();
+            let command = parts[0];
 
-    let filename = write_message_to_file(msg.clone())?;
-    append_to_file("\n", &filename)?;
-    let random_emoji = randem::randem(None, None, EMOJI_EXCLUDE.map(|s| s.to_string()));
-    bot.send_message(msg.chat.id, random_emoji.clone()).await?;
-    let time = Local::now().format("%H:%M").to_string();
-    append_to_file(&format!("@ {time} {random_emoji}\n"), &filename)?;
-    dialogue.update(State::Inbox).await?;
+            match command {
+                "/s" => {
+                    if parts.len() > 1 {
+                        let query = parts[1].trim();
+                        match execute_search_command(query).await {
+                            Ok(result) => {
+                                // Send search results in chunks if they're too large
+                                for chunk in result.chars().collect::<Vec<char>>().chunks(4000) {
+                                    let chunk_text = chunk.iter().collect::<String>();
+                                    bot.send_message(msg.chat.id, chunk_text).await?;
+                                }
+                            },
+                            Err(e) => {
+                                bot.send_message(msg.chat.id, format!("Error executing search: {}", e)).await?;
+                            }
+                        }
+                    } else {
+                        bot.send_message(msg.chat.id, "Usage: /s <search_query>").await?;
+                    }
+                },
+                _ => {
+                    bot.send_message(msg.chat.id, format!("Unknown command: {}", command)).await?;
+                }
+            }
+        } else {
+            // If not a command, process as a regular message
+            let filename = write_message_to_file(msg.clone())?;
+            append_to_file("\n", &filename)?;
+            let random_emoji = randem::randem(None, None, EMOJI_EXCLUDE.map(|s| s.to_string()));
+            bot.send_message(msg.chat.id, random_emoji.clone()).await?;
+            let time = Local::now().format("%H:%M").to_string();
+            append_to_file(&format!("@ {time} {random_emoji}\n"), &filename)?;
+            dialogue.update(State::Inbox).await?;
+        }
+    }
     Ok(())
 }
 
@@ -213,6 +248,28 @@ fn append_to_file(text: &str, filename: &str) -> io::Result<()> {
 
     file.write_all(text.as_bytes())?;
     Ok(())
+}
+
+async fn execute_search_command(query: &str) -> io::Result<String> {
+    let output = Command::new("rg")
+        .arg("--color=never")
+        .arg("--line-number")
+        .arg("--no-heading")
+        .arg("--smart-case")
+        .arg(query)
+        .output()?;
+    
+    if output.status.success() {
+        let result = String::from_utf8_lossy(&output.stdout).into_owned();
+        if result.is_empty() {
+            Ok(format!("No matches found for query: '{}'", query))
+        } else {
+            Ok(result)
+        }
+    } else {
+        let error = String::from_utf8_lossy(&output.stderr).into_owned();
+        Ok(format!("Error executing search: {}", error))
+    }
 }
 
 fn write_message_to_file(msg: Message) -> io::Result<String> {
