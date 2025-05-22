@@ -241,8 +241,8 @@ async fn handle_text_message(bot: Bot, dialogue: MyDialogue, msg: Message) -> Ha
                 .await?;
             let random_emoji = randem::randem(None, None, EMOJI_EXCLUDE.map(|s| s.to_string()));
             bot.send_message(msg.chat.id, random_emoji.clone()).await?;
-            let time = Local::now().format("%H:%M").to_string();
-            append_to_file(&format!("@ {time} {random_emoji}\n"), &filename)?;
+            // let time = Local::now().format("%H:%M").to_string();
+            // append_to_file(&format!("@ {time} {random_emoji}\n"), &filename)?;
             dialogue.update(State::Inbox).await?;
         }
     }
