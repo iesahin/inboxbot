@@ -195,7 +195,7 @@ async fn handle_text_message(bot: Bot, dialogue: MyDialogue, msg: Message) -> Ha
     if let Ok(false) = check_sender(&bot, &msg).await {
         return Ok(());
     }
-    
+
     if let Some(text) = msg.text() {
         // Check if the message is a command (starts with '/')
         if text.starts_with('/') {
@@ -213,23 +213,32 @@ async fn handle_text_message(bot: Bot, dialogue: MyDialogue, msg: Message) -> Ha
                                     let chunk_text = chunk.iter().collect::<String>();
                                     bot.send_message(msg.chat.id, chunk_text).await?;
                                 }
-                            },
+                            }
                             Err(e) => {
-                                bot.send_message(msg.chat.id, format!("Error executing search: {}", e)).await?;
+                                bot.send_message(
+                                    msg.chat.id,
+                                    format!("Error executing search: {}", e),
+                                )
+                                .await?;
                             }
                         }
                     } else {
-                        bot.send_message(msg.chat.id, "Usage: /s <search_query>").await?;
+                        bot.send_message(msg.chat.id, "Usage: /s <search_query>")
+                            .await?;
                     }
-                },
+                }
                 _ => {
-                    bot.send_message(msg.chat.id, format!("Unknown command: {}", command)).await?;
+                    bot.send_message(msg.chat.id, format!("Unknown command: {}", command))
+                        .await?;
                 }
             }
         } else {
             // If not a command, process as a regular message
             let filename = write_message_to_file(msg.clone())?;
             append_to_file("\n", &filename)?;
+            let words_in_file = count_words_in_file(&filename)?;
+            bot.send_message(msg.chat.id, format!("{}", words_in_file))
+                .await?;
             let random_emoji = randem::randem(None, None, EMOJI_EXCLUDE.map(|s| s.to_string()));
             bot.send_message(msg.chat.id, random_emoji.clone()).await?;
             let time = Local::now().format("%H:%M").to_string();
@@ -238,6 +247,12 @@ async fn handle_text_message(bot: Bot, dialogue: MyDialogue, msg: Message) -> Ha
         }
     }
     Ok(())
+}
+
+fn count_words_in_file(filename: &str) -> Result<usize, io::Error> {
+    let content = fs::read_to_string(filename).unwrap_or_default();
+    let word_count = content.split_whitespace().count();
+    Ok(word_count)
 }
 
 fn append_to_file(text: &str, filename: &str) -> io::Result<()> {
@@ -258,7 +273,7 @@ async fn execute_search_command(query: &str) -> io::Result<String> {
         .arg("--smart-case")
         .arg(query)
         .output()?;
-    
+
     if output.status.success() {
         let result = String::from_utf8_lossy(&output.stdout).into_owned();
         if result.is_empty() {
